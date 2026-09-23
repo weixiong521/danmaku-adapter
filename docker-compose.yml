@@ -1,0 +1,56 @@
+services:
+  getapp-danmu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: getapp-danmu:1.0.0
+    container_name: getapp-danmu
+    restart: unless-stopped
+
+    ports:
+      - "12381:12381"
+
+    environment:
+      TZ: Asia/Shanghai
+      # 监听端口（也可用 PORT=12381）
+      LISTEN: ":12381"
+      CONFIG_PATH: "/app/data/config.json"
+
+      # ---- 资源站/上游：建议放在 data/config.json 里维护，或走 /admin 接口 ----
+      # RESOURCE_HOSTS: "jimaoys95.com,jimaoys94.com"
+      # LOGVAR_BASE: "https://1.501710491.xyz/weixiong"
+      # LOGVAR_TOKEN: ""
+      # MAX_DANMU: "8000"
+      # SOURCE_PRIORITY: "tencent,iqiyi,bilibili,youku,mango,migu,renren,kan360,douban,vod"
+      # HTTP_TIMEOUT_MS: "45000"
+      # RESOLVE_TTL_SEC: "600"
+
+      # ---- 管理接口（资源站热更新）。生产环境请修改为强口令 ----
+      ADMIN_ENABLED: "true"
+      ADMIN_TOKEN: "change-me-please"
+      WATCH_INTERVAL_SEC: "15"
+
+    volumes:
+      # 配置与持久化目录：直接编辑 ./data/config.json 即热生效
+      - ./data:/app/data
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:12381/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # 如需接入已有反向代理网络，取消注释并改成实际网络名
+    # networks:
+    #   - web
+
+# networks:
+#   web:
+#     external: true

@@ -1,0 +1,37 @@
+{
+  "listen": ":12381",
+
+  "logvar_base": "https://1.501710491.xyz/weixiong",
+  "logvar_token": "",
+
+  "resource_hosts": [
+    "https://jimaoys95.com",
+    "https://jimaoys94.com"
+  ],
+  "share_hosts": [],
+
+  "http_timeout_ms": 45000,
+  "max_danmu": 8000,
+  "font_size": "24px",
+  "default_color": "#FFFFFF",
+
+  "source_priority": [
+    "tencent",
+    "iqiyi",
+    "bilibili",
+    "youku",
+    "mango",
+    "migu",
+    "renren",
+    "kan360",
+    "douban",
+    "vod"
+  ],
+
+  "resolve_ttl_sec": 600,
+
+  "admin_enabled": false,
+  "admin_token": "change-me-please",
+
+  "watch_interval_sec": 15
+}
