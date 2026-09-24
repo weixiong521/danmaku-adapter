@@ -28,14 +28,15 @@ func main() {
 		lv:    NewLogVarClient(store),
 		jl:    NewJuliangResolver(store),
 		sm:    NewSourceManager(store),
+		cms:   NewCMSCrawler(store),
 	}
 
 	mux := http.NewServeMux()
 
-	// Getapp 弹幕入口：根路径（?ac=dm）以及 /dm、/danmu 均可
+	// Getapp 弹幕入口：根路径（?ac=dm）以及 /dm、/danmu、/cms 均可
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/", "/dm", "/danmu":
+		case "/", "/dm", "/danmu", "/cms":
 			s.handleDanmu(w, r)
 		default:
 			http.NotFound(w, r)

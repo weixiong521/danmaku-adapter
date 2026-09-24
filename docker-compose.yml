@@ -25,6 +25,13 @@ services:
       # HTTP_TIMEOUT_MS: "45000"
       # RESOLVE_TTL_SEC: "600"
 
+      # ---- 苹果CMS 直连抓取（?ac=cms）：建议直接写在 data/config.json ----
+      # CMS_BASE_URL: "https://www.501710491.xyz"
+      # CMS_CONCURRENCY: "4"
+      # CMS_TIMEOUT_MS: "30000"
+      # CMS_ALL_EPISODES: "true"
+      # CMS_MAX_EPISODES: "0"
+
       # ---- 管理接口（资源站热更新）。生产环境请修改为强口令 ----
       ADMIN_ENABLED: "true"
       ADMIN_TOKEN: "change-me-please"

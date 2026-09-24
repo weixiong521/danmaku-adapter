@@ -2,12 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 72bedbacb9db265375b893d98c8f8513_5ea0955ab78c11f199d2525400393706
-    ReservedCode1: Do6hj4odLWKIrN91XP3qRfyd71QKFP72IoDDv2z7qRzd5SHtw8aOPvOjutzP7yO/LYjaIToPUwrRLCMYLS1Mp8WmDEIvZ0yWGVtKBkbwdBmCmNe3rEJJE2XcDH2VhX5hupM9IupCYbY4RmRyNDm6y34pZSYT7s3VFUj6pq3mFxQ8Mn6m9n2gPsXhg/M=
+    ProduceID: 72bedbacb9db265375b893d98c8f8513_d9b0df9ab7d311f1a59e525400248c00
+    ReservedCode1: 1kc1/1EC7QC1kiJQstryUhFOuBTjhCxn33SQg2DwDGRgYAFRqXEd0R2XJ4rsVNqUicOVIpeYvkctM/f/lRGwOLIQoG2Yc1bdWmeQiVE4Zf+ObDcL/9nThlsQtSO30NXT+Tyvy01a9kVgBgjBw7gdMIneqw/RWpXL+ebmEvgL6hlOq3G7UV0CdLyZeVI=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 72bedbacb9db265375b893d98c8f8513_5ea0955ab78c11f199d2525400393706
-    ReservedCode2: Do6hj4odLWKIrN91XP3qRfyd71QKFP72IoDDv2z7qRzd5SHtw8aOPvOjutzP7yO/LYjaIToPUwrRLCMYLS1Mp8WmDEIvZ0yWGVtKBkbwdBmCmNe3rEJJE2XcDH2VhX5hupM9IupCYbY4RmRyNDm6y34pZSYT7s3VFUj6pq3mFxQ8Mn6m9n2gPsXhg/M=
+    PropagateID: 72bedbacb9db265375b893d98c8f8513_d9b0df9ab7d311f1a59e525400248c00
+    ReservedCode2: 1kc1/1EC7QC1kiJQstryUhFOuBTjhCxn33SQg2DwDGRgYAFRqXEd0R2XJ4rsVNqUicOVIpeYvkctM/f/lRGwOLIQoG2Yc1bdWmeQiVE4Zf+ObDcL/9nThlsQtSO30NXT+Tyvy01a9kVgBgjBw7gdMIneqw/RWpXL+ebmEvgL6hlOq3G7UV0CdLyZeVI=
 ---
+
+
 
 # 完整使用教程
 
@@ -24,9 +26,11 @@ AIGC:
 4. [第三步：对接 Getapp 后台](#四第三步对接-getapp-后台)
 5. [第四步：APP 端验证](#五第四步app-端验证)
 6. [第五步：添加 / 替换资源站](#六第五步添加--替换资源站)
-7. [第六步：日常运维](#七第六步日常运维)
-8. [排障 FAQ](#八排障-faq)
-9. [进阶：反向代理与 HTTPS](#九进阶反向代理与-https)
+7. [第六步：苹果CMS 直连抓取（可选）](#七第六步苹果cms-直连抓取可选)
+8. [第七步：日常运维](#八第七步日常运维)
+9. [排障 FAQ](#九排障-faq)
+10. [进阶：反向代理与 HTTPS](#十进阶反向代理与-https)
+11. [完整链路回顾](#十一完整链路回顾)
 
 ---
 
@@ -69,6 +73,8 @@ cp config.example.json data/config.json
   "admin_token": "换成你自己的复杂口令"
 }
 ```
+
+> 只有视频 ID / 详情页 URL 想直接抓 m3u8 时，还需要 `cms_base_url` 等字段，见本教程第七步。
 
 ### 2.3 启动
 
@@ -242,9 +248,75 @@ curl $H -X POST $BASE/admin/reload
 
 ---
 
-## 七、第六步：日常运维
+## 七、第六步：苹果CMS 直连抓取（可选）
 
-### 7.1 常用命令
+到这一步，服务已经能给 APP 正常返回弹幕了。本节解决另一类需求：**手上只有视频 ID 或详情页 URL，想直接抓 m3u8 / 弹幕**（例如在浏览器里验证，或用脚本批量导出某片全部集数）。
+
+入口是 `?ac=cms`：先请求详情页解析出全部分集的 `sid/nid`，再逐集请求播放页解析内联 `player_aaaa` 拿到 m3u8，最后交给与 APP 完全相同的弹幕匹配链路。
+
+### 7.1 配置站点地址
+
+编辑 `data/config.json`（热重载，无需重启）：
+
+```json
+{
+  "cms_base_url": "https://www.501710491.xyz",
+  "cms_concurrency": 4,
+  "cms_timeout_ms": 30000,
+  "cms_all_episodes": true,
+  "cms_max_episodes": 0
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `cms_base_url` | 苹果CMS 站点根地址，**不带** `/index.php`；若每次都用 `url` 传完整地址可留空 |
+| `cms_concurrency` | 逐集抓播放页的并发数，站点限速明显时调小 |
+| `cms_timeout_ms` | 单次上游请求（详情页/播放页）超时（毫秒）；单次抓取整体预算另有兜底（×4，下限 30s、上限 3min） |
+| `cms_all_episodes` | 默认是否抓取全部分集 |
+| `cms_max_episodes` | 单次最多抓几集，`0` 不限（大剧集建议设 10~20 控制耗时） |
+
+### 7.2 跑一次抓取
+
+```sh
+BASE=http://127.0.0.1:12381
+
+# 先只抓 m3u8，确认链路通
+curl "$BASE/?ac=cms&id=2421&danmu=0"
+
+# 确认无误后再带上弹幕匹配
+curl "$BASE/?ac=cms&id=2421"
+```
+
+预期：返回中 `cms.episodes[]` 每集都有 `m3u8` 且 `ok=true`；`danum` 大于 0 说明弹幕匹配成功。
+
+### 7.3 参数速查
+
+| 参数 | 作用 |
+|---|---|
+| `id` / `url` | 二选一：视频 ID，或详情页 URL（传播放页 URL 亦可） |
+| `sid` / `nid` | 只处理某个播放源 / 某一集 |
+| `all=1` | 强制抓全量集（覆盖配置） |
+| `match_all=1` | 合并返回全部集的弹幕，而非仅“选中集” |
+| `danmu=0` | 只抓 m3u8，不匹配弹幕 |
+
+### 7.4 抓不到时怎么排查
+
+| 现象 | 先看这里 |
+|---|---|
+| `无法从入参解析出视频 ID` | `url` 是否为详情页/播放页地址（含 `/id/{数字}` 或 `?id={数字}`） |
+| 详情页报 `upstream HTTP error status 5xx` | 站点是否被 Cloudflare 拦；先用浏览器访问同一 URL 确认站点可用 |
+| `详情页未解析出任何分集` | 该站分集列表是否由 JS 动态渲染（本项目只解析服务端渲染的链接） |
+| 某集 `encrypt=1` | 站点启用了加密播放地址，需补 `cmsDecryptHook` |
+| m3u8 有但弹幕为 0 | 该片在 LogVar 上游没库，或资源站域名未加入 `resource_hosts` |
+
+> 完整字段与实现细节见 [`cms-direct-crawl.md`](cms-direct-crawl.md)，接口示例见 README 第八节。
+
+---
+
+## 八、第七步：日常运维
+
+### 8.1 常用命令
 
 ```bash
 cd /opt/logvar-getapp-docker
@@ -256,14 +328,14 @@ docker compose down                    # 停止并删除容器（配置在 data/
 docker compose up -d --build           # 改代码后重建
 ```
 
-### 7.2 健康检查
+### 8.2 健康检查
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:12381/health   # 200
 docker inspect --format '{{.State.Health.Status}}' getapp-danmu          # healthy
 ```
 
-### 7.3 备份与迁移
+### 8.3 备份与迁移
 
 需要备份的只有 `data/` 目录（内含 `config.json`）：
 
@@ -273,7 +345,7 @@ tar czf getapp-danmu-backup-$(date +%F).tar.gz data/
 
 迁移到新机器：拷 `data/` + 工程目录 → `docker compose up -d --build`。
 
-### 7.4 升级
+### 8.4 升级
 
 ```bash
 docker compose down
@@ -281,7 +353,7 @@ docker compose down
 docker compose up -d --build
 ```
 
-### 7.5 安全建议
+### 8.5 安全建议
 
 | 项 | 建议 |
 |---|---|
@@ -291,7 +363,7 @@ docker compose up -d --build
 
 ---
 
-## 八、排障 FAQ
+## 九、排障 FAQ
 
 | 现象 | 原因与处理 |
 |---|---|
@@ -309,7 +381,7 @@ docker compose up -d --build
 
 ---
 
-## 九、进阶：反向代理与 HTTPS
+## 十、进阶：反向代理与 HTTPS
 
 以 Nginx 为例（域名 `dm.example.com` → 本服务）：
 
@@ -342,7 +414,7 @@ server {
 
 ---
 
-## 十、完整链路回顾
+## 十一、完整链路回顾
 
 ```
 APP 播放某集
@@ -359,5 +431,19 @@ transform.go 转换为 Getapp danmuku 格式
 APP 渲染弹幕
 ```
 
+另有「无 APP」链路（`?ac=cms`）：
+
+```
+只给视频 ID 或详情页 URL
+   │  GET /?ac=cms&id=2421
+   ▼
+cms.go  详情页 ─> 全部分集(sid/nid) ─> 逐集播放页 ─> player_aaaa ─> m3u8（encrypt=1 走解密钩子）
+   ▼
+handle_cms.go  逐集复用上面同一条弹幕链路（hash 反查 ─> LogVar；失败回退详情页剧名）
+   ▼
+返回 code/name/danum/danmuku + cms 明细（sources[] / episodes[] / ok_count / total）
+```
+
 至此全部完成。需要新增/替换资源站时，直接改 `data/config.json` 或调 `/admin/sources` 即可，服务无需重启。
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*

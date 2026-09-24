@@ -2,12 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 72bedbacb9db265375b893d98c8f8513_5dd4e4f8b78c11f199d2525400393706
-    ReservedCode1: kC1ytD6OJLr+63qBGXuD06wLB9tbi7FQROpNJY/7ZdI/0g3N73miDUXR02hQBNBrgeYdu+/baWCM8uSs7EKkb6GU1RuWaL0RutM2h6LlRUQ2pIT01j4KlpTNySGMPUgipuzCfdN0pTp+VEWC3vN4WXKU6PndcJhzUFNnpcnSMLzTYbSUjQy1XWX8otM=
+    ProduceID: 72bedbacb9db265375b893d98c8f8513_d8d7fa18b7d311f199d2525400393706
+    ReservedCode1: gbwm746nHIKOLujngxM/W2/6DFtE9hnUdlbP/+D+uNU7N3KkvHg3mtE0l/qZqWbNmbtzjB+qGN6cN323yHRM3VfPHDpAs7gren2hoQJRR7KqXbXGtylOOARVzkpFEZxxyJqM+8q2v+XAXtSx1n8DUD1Ge9W+TB/ozoFUgE6IubCabETtigU5w4Elobk=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 72bedbacb9db265375b893d98c8f8513_5dd4e4f8b78c11f199d2525400393706
-    ReservedCode2: kC1ytD6OJLr+63qBGXuD06wLB9tbi7FQROpNJY/7ZdI/0g3N73miDUXR02hQBNBrgeYdu+/baWCM8uSs7EKkb6GU1RuWaL0RutM2h6LlRUQ2pIT01j4KlpTNySGMPUgipuzCfdN0pTp+VEWC3vN4WXKU6PndcJhzUFNnpcnSMLzTYbSUjQy1XWX8otM=
+    PropagateID: 72bedbacb9db265375b893d98c8f8513_d8d7fa18b7d311f199d2525400393706
+    ReservedCode2: gbwm746nHIKOLujngxM/W2/6DFtE9hnUdlbP/+D+uNU7N3KkvHg3mtE0l/qZqWbNmbtzjB+qGN6cN323yHRM3VfPHDpAs7gren2hoQJRR7KqXbXGtylOOARVzkpFEZxxyJqM+8q2v+XAXtSx1n8DUD1Ge9W+TB/ozoFUgE6IubCabETtigU5w4Elobk=
 ---
+
+
 
 # 核心文件说明
 
@@ -25,9 +27,10 @@ AIGC:
                     ┌───────────────────┴────────────────────┐
                     ▼                                        ▼
         ┌───────────────────────┐                ┌────────────────────────┐
-        │ handler.go 弹幕入口    │                │ admin.go 管理接口       │
-        │  /  /dm  /danmu       │                │  /admin/*              │
-        └──────────┬────────────┘                └───────────┬────────────┘
+        │ handler.go 弹幕入口        │            │ admin.go 管理接口       │
+        │  /  /dm  /danmu  /cms     │            │  /admin/*              │
+        └──────────┬────────────────┘            └───────────┬────────────┘
+                   │  └─ /cms | ac=cms ─> handle_cms.go ─> cms.go（苹果CMS 抓取）
                    │                                          │
      ┌─────────────┼───────────────┐                          ▼
      ▼             ▼               ▼              ┌────────────────────────┐
@@ -150,7 +153,7 @@ AIGC:
 | `firstNonEmpty(...)` | 取第一个非空字符串 |
 | `Server` | 聚合 `store` / `lv`(LogVar) / `jl`(资源站解析) / `sm`(资源站管理) |
 | `(*Server).writeJSON(w, v)` | 统一输出 JSON；设置 CORS `*` 与 `Cache-Control: no-store` |
-| `(*Server).handleDanmu(w, r)` | 主逻辑：`OPTIONS` 预检 → 取参 → 三条匹配分支 → 组装响应 |
+| `(*Server).handleDanmu(w, r)` | 主逻辑：`OPTIONS` 预检 → 取参 → 命中 `/cms` 或 `ac=cms` 时转交 `handleCMS` → 否则走三条匹配分支 → 组装响应 |
 
 **三条匹配分支（优先级从高到低）**
 
@@ -245,14 +248,80 @@ AIGC:
 
 ---
 
+### 12. `cms.go` — 苹果CMS 直连抓取（**核心**）
+
+**职责**：请求苹果CMS V10 的详情页/播放页，解析全部分集并取出每集真实 m3u8。
+
+| 函数/类型 | 说明 |
+|---|---|
+| `CMSCrawler` | 持 `*ConfigStore`，对外提供两个能力：详情页解析 `ResolveDetail`、逐集取流 `FetchM3U8` |
+| `NewCMSCrawler(store)` | 构造函数（与其它组件一样只依赖 `ConfigStore`，配置热更新即时生效） |
+| `normalizeCMSBase(raw)` | 补 `https://`、去尾斜杠、去掉多余的 `/index.php` |
+| `extractCMSID(s)` | 从详情页/播放页 URL 或纯数字 ID 中提取视频 ID |
+| `(*CMSCrawler).parseCMSInput(raw)` | 结合配置解析入参，返回 `base` / `id` / `detailURL` |
+| `cmsDetailURL(base, id)` / `cmsPlayURL(base, id, sid, nid)` | 拼装详情页 / 播放页地址 |
+| `(*CMSCrawler).ResolveDetail(ctx, base, id, detailURL)` | 请求详情页 → 校验视频 ID → 解析全部播放源与分集 → 取剧名（结果进 TTL 缓存） |
+| `parseCMSSources(html, players)` | 纯函数：正则提取 `/vod/play/id/{id}/sid/{sid}/nid/{nid}.html`，按 sid/nid 排序去重 |
+| `parseCMSPlayerList(html)` | 解析 `MacPlayerConfig.player_list`，用于补播放源标识/显示名（失败返回 nil，不影响主流程） |
+| `(*CMSCrawler).FetchM3U8(ctx, d, sid, nid, all)` | 并发逐集抓播放页（受 `cms_concurrency` / `cms_max_episodes` 约束），结果按 sid/nid 排序 |
+| `(*CMSCrawler).fetchEpisode(...)` | 单集抓取：`parsePlayerAAAA` → `encrypt==0` 直接取 `url`，`encrypt!=0` 走解密钩子 |
+| `parsePlayerAAAA(html)` | 定位 `var player_aaaa` 后的 `{`，按花括号配平取出完整 JSON 并解析 |
+| `extractBalancedObject(s, start)` | 字符串感知的 `{}` 配平（抗 `url` 内出现的花括号与转义），比非贪婪正则可靠 |
+| `cmsDecryptHook(encrypted)` | 预留解密入口：依次尝试 URL-decode 与 base64（标准 / URL-safe / 无填充），均失败则返回明确错误 |
+| `decodeBase64Loose(s)` | 依次尝试标准 / URL-safe / 无填充 Base64 解码 |
+| `cleanCMSTitle(html)` / `normalizeCMSText(s)` | 剧名清洗：优先 `<h1>`（排除含“视频详情”的超长文本），退化取 `<title>` 并剥离站点名/分类后缀 |
+| `cmsHeaders(base)` | 浏览器常规请求头（Referer / Accept / Accept-Language / Sec-Fetch-*），降低 Cloudflare 拦截概率 |
+| `cmsOverallTimeout(cfg)` | 单次 `?ac=cms` 请求的整体超时预算（`cms_timeout_ms × 4`，下限 30s、上限 3min） |
+| `CMSDetail` / `CMSSourceRef` / `CMSEpisodeRef` / `CMSEpisodeResult` | 详情页结果、播放源、分集引用、单集抓取结果结构 |
+| `countCMSEpisodes(sources)` | 统计（过滤后）待抓集数，用于预分配任务切片 |
+| `flexInt` | 容忍 `sid` / `nid` 为字符串或数字的 JSON 解码类型 |
+
+**关键设计**：`player_aaaa` 内可能出现嵌套对象与含花括号的字符串，故不使用非贪婪正则截断，而是配平提取后再 `json.Unmarshal`。
+
+---
+
+### 13. `handle_cms.go` — `?ac=cms` 处理器
+
+**职责**：编排“解析入参 → 抓分集 → 并发抓 m3u8 → 逐集匹配弹幕 → 组装返回”。
+
+| 函数/类型 | 说明 |
+|---|---|
+| `(*Server).handleCMS(w, r, cfg)` | 主流程；解析 `id/url/sid/nid/all/match_all/danmu`，返回 `code/name/danum/danmuku` + `cms` 明细 |
+| `(*Server).matchDanmu(ctx, cfg, d, eps, idx)` | 选中集的弹幕匹配编排（并发受 `cms_concurrency` 限制，单集失败只记日志） |
+| `(*Server).matchOneEpisode(ctx, cfg, d, ep, baseTitle, titleSeason)` | 单集匹配：`ExtractHash` → `ResolveByHash` → `ResolveByTitle`；上游无结果时**回退“详情页剧名 + 集号”**再匹配一次 |
+
+**关键设计**：`cms` 明细节点含 `id` / `title` / `base` / `detail_url` / `sources[]` / `episodes[]` / `ok_count` / `total` / `danmu_name`；并发数受 `cms_concurrency` 限制，单集失败不影响整体（记入该集 `ok=false` / `error`）；只有参数错误才返回 `code=0`。默认只为“选中集”匹配弹幕，`match_all=1` 时合并全部成功集的弹幕。
+
+---
+
+### 14. `cms_test.go` — 苹果CMS 抓取单测
+
+8 个用例：基础地址规范化、视频 ID 提取、分集解析、`player_aaaa` 解析（含嵌套对象与字符串花括号）、括号配平、解密钩子、剧名清洗、播放源列表解析。
+
+---
+
+### 15. `smoke_test.go` — 真实站点端到端冒烟（可选）
+
+**职责**：在真实苹果CMS 站点上跑通「详情页 → 播放页 → m3u8 → 弹幕匹配 → HTTP 接口」全链路，仅在显式开启时编译与执行。
+
+| 项 | 说明 |
+|---|---|
+| 构建标签 | `//go:build smoke`，默认**不参与**普通构建与 CI |
+| 开关 | 未设置 `CMS_SMOKE=1` 时直接 `t.Skip`，避免误触发外部请求 |
+| 可覆盖项 | `CMS_SMOKE_BASE`（站点根地址）、`CMS_SMOKE_ID`（视频 ID） |
+| 执行 | `CMS_SMOKE=1 go test -tags smoke -run TestCMSSmoke -v .` |
+
+---
+
 ## 三、依赖注入关系
 
 ```
 ConfigStore ──┬──> SourceManager（读写配置：资源站/优先级/上游）
               ├──> LogVarClient（读配置：上游地址/超时/选源偏好/缓存 TTL）
-              └──> JuliangResolver（读配置：资源站主机/超时/缓存 TTL）
+              ├──> JuliangResolver（读配置：资源站主机/超时/缓存 TTL）
+              └──> CMSCrawler（读配置：站点地址/并发/超时/集数上限）
                       │
-                      └──> Server（聚合三者 + 路由） ──> main.go
+                      └──> Server（聚合四者 + 路由） ──> main.go
 ```
 
 所有组件共享**同一个** `ConfigStore` 实例，这是“改一次配置全局立即生效”的实现基础。
@@ -279,4 +348,6 @@ ConfigStore ──┬──> SourceManager（读写配置：资源站/优先级/
 | 新的弹幕上游（除 LogVar 外） | 仿 `logvar.go` 写新 Client，`handler.go` 里按配置切换 |
 | 更多输出协议（如自定义 APP） | 仿 `transform.go` 写新构造器，`handler.go` 按参数选择 |
 | 更多管理能力（如限流开关） | 在 `config.go` 加字段，`admin.go` 加路由 |
+| 接入另一家 CMS / 采集站 | `cms.go` 增加站点解析分支，`handle_cms.go` 按配置或参数选择实现 |
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*

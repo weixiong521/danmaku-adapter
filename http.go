@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -60,7 +61,12 @@ func httpGetWithRetry(parent context.Context, client *http.Client, url string, h
 
 type httpStatusError struct{ code int }
 
-func (e *httpStatusError) Error() string { return "upstream HTTP error status " + http.StatusText(e.code) }
+func (e *httpStatusError) Error() string {
+	if t := http.StatusText(e.code); t != "" {
+		return "upstream HTTP error status " + strconv.Itoa(e.code) + " " + t
+	}
+	return "upstream HTTP error status " + strconv.Itoa(e.code)
+}
 
 // ---- 极简 TTL 缓存 ----
 

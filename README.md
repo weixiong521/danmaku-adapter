@@ -2,12 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 72bedbacb9db265375b893d98c8f8513_5bd2d6b7b78c11f1a59e525400248c00
-    ReservedCode1: 7y54BjVvsszibcCDIM8yOepJvNISZLl6aVwAIEH7SFgtnLF2Z4LWIw5wpD/se+bBjA1Pc8pkHytGIuzQmOZJPKVG3E6acIM2SskasUXjA46xwjBu/V2DUOQ1pVEfwnNyq6KGGgNS3dEp7FAuYygP+zPdTkrq/Trl2USqXPyF1L7uF9HDOeuyuHN/EJc=
+    ProduceID: 72bedbacb9db265375b893d98c8f8513_d6df12ecb7d311f1a59e525400248c00
+    ReservedCode1: 7BWcLs44Y4jVh+AM1YDf2TLEMYDZ0c4+oX7XPiZNbxPgdKWI18S1E27+3EoM/S3BxLRVCvw2/U0CMKnAY+/cwWPL7b7QuJHF2c7EXrXG9i9wK8x758i9BytaM05yPOR/NHPSGGQf1O6DB+UMOJURlyKcVwGRitkGSEIZ9Gh94UUcJzi96sQ157e4CrA=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 72bedbacb9db265375b893d98c8f8513_5bd2d6b7b78c11f1a59e525400248c00
-    ReservedCode2: 7y54BjVvsszibcCDIM8yOepJvNISZLl6aVwAIEH7SFgtnLF2Z4LWIw5wpD/se+bBjA1Pc8pkHytGIuzQmOZJPKVG3E6acIM2SskasUXjA46xwjBu/V2DUOQ1pVEfwnNyq6KGGgNS3dEp7FAuYygP+zPdTkrq/Trl2USqXPyF1L7uF9HDOeuyuHN/EJc=
+    PropagateID: 72bedbacb9db265375b893d98c8f8513_d6df12ecb7d311f1a59e525400248c00
+    ReservedCode2: 7BWcLs44Y4jVh+AM1YDf2TLEMYDZ0c4+oX7XPiZNbxPgdKWI18S1E27+3EoM/S3BxLRVCvw2/U0CMKnAY+/cwWPL7b7QuJHF2c7EXrXG9i9wK8x758i9BytaM05yPOR/NHPSGGQf1O6DB+UMOJURlyKcVwGRitkGSEIZ9Gh94UUcJzi96sQ157e4CrA=
 ---
+
+
 
 # LogVar → Getapp 弹幕适配服务（Docker 版）
 
@@ -26,6 +28,7 @@ AIGC:
 | 资源站热更新 | 通过 `/admin` 接口 **实时增删资源站**，改完立即生效并持久化到磁盘 |
 | 协议转换 | 对内调用 LogVar（弹弹play 规范），对外暴露 Getapp 协议 |
 | 智能选源选集 | 按标题/季/集打分选源，可从资源站 m3u8 的 32 位 hash 反查剧名/季/集 |
+| 苹果CMS 直连抓取 | `?ac=cms&id={视频ID}` / `?ac=cms&url={详情页URL}`：主动抓详情页全部分集 m3u8，再交给弹幕链路匹配 |
 | 弹幕裁剪 | `max_danmu` 可按时间轴均匀抽样，避免手机端一次性渲染数万条 |
 
 ---
@@ -49,6 +52,9 @@ Getapp 与 LogVar 的弹幕协议不一致，中间需要一个“翻译层”�
                      剧名/季/集 ──> LogVar(腾讯/爱奇艺/B站…聚合) ──> 弹幕
                                                           │
                                                 转换为 Getapp 格式返回 APP
+
+无 APP 场景（可选链路）：
+本服务 ──?ac=cms&id={视频ID}──> 苹果CMS 详情页/播放页 ──> 全部集 m3u8 ──> 同上弹幕链路
 ```
 
 ---
@@ -142,6 +148,11 @@ CGO_ENABLED=0 go build -o getapp-danmu .
 | `admin_enabled` | bool | `false` | `ADMIN_ENABLED` | 是否开启 `/admin` 管理接口 |
 | `admin_token` | string | `""` | `ADMIN_TOKEN` | `/admin` 访问令牌（请求头 `X-Admin-Token`） |
 | `watch_interval_sec` | int | `15` | `WATCH_INTERVAL_SEC` | 配置文件轮询间隔（秒） |
+| `cms_base_url` | string | `""` | `CMS_BASE_URL` | 苹果CMS 站点根地址（不带 `/index.php`），供 `?ac=cms&id=..` 使用；内置默认空，`config.example.json` 中预填了示例站点。留空时只能用 `url` 传完整详情页地址 |
+| `cms_concurrency` | int | `4` | `CMS_CONCURRENCY` | `?ac=cms` 逐集抓取播放页的并发数 |
+| `cms_timeout_ms` | int | `30000` | `CMS_TIMEOUT_MS` | `?ac=cms` 单次上游请求超时（毫秒）；单次请求整体预算另有兜底（×4，下限 30s、上限 3min） |
+| `cms_all_episodes` | bool | `true` | `CMS_ALL_EPISODES` | `?ac=cms` 默认是否抓取全部分集；`false` 时仅抓首集 |
+| `cms_max_episodes` | int | `0` | `CMS_MAX_EPISODES` | `?ac=cms` 单次最多抓取集数，`0` 不限 |
 
 ### 4.2 仅环境变量（无对应文件字段）
 
@@ -264,6 +275,9 @@ curl "$BASE/?ac=dm&url=$(python3 -c 'import urllib.parse;print(urllib.parse.quot
 
 # 3) 无参数（应返回 danum=0）
 curl "$BASE/?ac=dm"
+
+# 4) 苹果CMS 直连抓取（无 APP 场景：只抓 m3u8）
+curl "$BASE/?ac=cms&id=2421&danmu=0"
 ```
 
 返回形如：
@@ -277,7 +291,71 @@ curl "$BASE/?ac=dm"
 
 ---
 
-## 八、工作原理与已知限制
+## 八、苹果CMS 直连抓取（`?ac=cms`）
+
+在**没有 APP、拿不到播放地址**的场景下，直接按“视频 ID 或详情页 URL”去苹果CMS 站点抓全部分集 m3u8，再走与 `?ac=dm` 完全一致的弹幕链路。
+
+### 8.1 请求
+
+```bash
+BASE=http://127.0.0.1:12381
+
+# 只抓 m3u8，不做弹幕匹配
+curl "$BASE/?ac=cms&id=2421&danmu=0"
+
+# 抓全量集数并匹配弹幕
+curl "$BASE/?ac=cms&id=2421&all=1"
+
+# 仅第 1 播放源的第 3 集
+curl "$BASE/?ac=cms&id=2421&sid=1&nid=3"
+
+# 用详情页 URL（等价路径 /cms 亦可用）
+curl --get --data-urlencode "url=https://www.501710491.xyz/index.php/vod/detail/id/2421.html" \
+     --data "ac=cms" "$BASE/"
+```
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `id` | 二选一 | 苹果CMS 视频 ID |
+| `url` | 二选一 | 详情页 URL（传播放页 URL 亦可，会自动提取 ID）；别名 `detail_url` / `cms_url` |
+| `sid` / `nid` | 否 | 限定播放源 / 集号（指定 `nid` 后自动只抓该集） |
+| `all` | 否 | `1/0`，覆盖配置 `cms_all_episodes` |
+| `match_all` | 否 | `1/0`，是否合并返回所有集的弹幕 |
+| `danmu` | 否 | `0` 只抓 m3u8；默认 `1` |
+
+### 8.2 返回
+
+在原有 `code` / `name` / `danum` / `danmuku` 之外，附带 `cms` 明细：`id` / `title` / `base` / `detail_url` / `sources[]`（`sid` / `from` / `name` / `episodes`）/ `episodes[]` / `ok_count` / `total` / `danmu_name`。
+每集含 `sid` / `nid` / `name` / `ok` / `encrypt` / `m3u8` / `page_url` / `danum`，失败时带 `error`，另有可选 `sid_name` / `from` / `url_next` / `danmu_name`。示例与字段说明见 [`docs/cms-direct-crawl.md`](docs/cms-direct-crawl.md)。
+
+### 8.3 抓取链路
+
+1. `GET /index.php/vod/detail/id/{id}.html` → 解析全部 `/vod/play/id/{id}/sid/{sid}/nid/{nid}.html`，按 `sid` 归并分集；剧名优先取 `<h1>`，退化再从 `<title>` 剥离站点后缀。
+2. 并发抓取各集播放页 → 正则定位 `var player_aaaa = {` → **花括号配平**提取完整对象 → JSON 解析。
+3. `encrypt == 0` 时 `url` 即真实 m3u8；`encrypt == 1` 交给 `cmsDecryptHook` 预留钩子（现覆盖 URL-encode / base64 两种伪加密）。
+4. m3u8 交给现有链路：资源站 hash 反查剧名/季/集 → LogVar 匹配；**若该链路无弹幕，回退用“详情页剧名 + 集号”再匹配一次**。
+
+### 8.4 注意
+
+- 站点若挂在 Cloudflare 后，请求已补齐 `Referer` 与浏览器常规头；仍返回 5xx 时先确认站点本身可访问。
+- 只支持**服务端渲染**的分集列表（苹果CMS V10 标准路由）；纯 JS 动态渲染的播放列表抓不到。
+- 报错遵循本项目惯例：参数错误 → `code=0`；抓取链路中单集失败 → 记入该集 `ok=false` / `error`，不影响其它集。
+
+### 8.5 验证与冒烟
+
+```bash
+# 单元测试（不需要外网）
+go test ./...
+
+# 真实站点端到端冒烟：详情页 → 播放页 → m3u8 → 弹幕匹配 → HTTP 接口
+CMS_SMOKE=1 go test -tags smoke -run TestCMSSmoke -v .
+```
+
+冒烟用例在 `smoke_test.go`（构建标签 `smoke`），默认不参与普通构建；未设置 `CMS_SMOKE=1` 时自动跳过，可用 `CMS_SMOKE_BASE` / `CMS_SMOKE_ID` 覆盖站点与视频 ID。
+
+---
+
+## 九、工作原理与已知限制
 
 **匹配逻辑**
 
@@ -295,7 +373,7 @@ curl "$BASE/?ac=dm"
 
 ---
 
-## 九、目录结构
+## 十、目录结构
 
 ```
 logvar-getapp-docker/
@@ -310,33 +388,39 @@ logvar-getapp-docker/
 ├── sources.go               # 资源站运行时管理（SourceManager）
 ├── admin.go                 # /admin 管理接口
 ├── handler.go               # Getapp 弹幕入口 + 路由分发
+├── handle_cms.go            # ?ac=cms 处理器（抓取编排 + 弹幕匹配）
+├── cms.go                   # 苹果CMS 直连抓取（详情页/播放页解析、player_aaaa、解密钩子）
 ├── logvar.go                # LogVar 客户端：搜索/详情/弹幕 + 评分选源选集
 ├── juliang.go               # 资源站分享页解析（hash→剧名/季/集）+ 豆瓣解析
 ├── transform.go             # LogVar 弹幕 → Getapp danmuku 格式转换
 ├── common.go                # 标题/季/集/中文数字解析
 ├── http.go                  # HTTP 客户端（重试）+ TTL 缓存
 ├── main_test.go             # 单元测试
+├── cms_test.go              # 苹果CMS 抓取相关单元测试
+├── smoke_test.go            # 真实站点端到端冒烟（-tags smoke，默认不编译）
 └── docs/
     ├── danmuku-format.md    # 弹幕库字段说明（参数名/类型/说明/示例）
     ├── core-files.md        # 核心文件说明
+    ├── cms-direct-crawl.md  # 苹果CMS 直连抓取（?ac=cms）详解
     └── tutorial.md          # 完整使用教程
 ```
 
 ---
 
-## 十、文档索引
+## 十一、文档索引
 
 | 文档 | 内容 |
 |---|---|
 | [`docs/danmuku-format.md`](docs/danmuku-format.md) | 弹幕接口返回结构、`danmuku` 8 字段参数名/类型/说明/示例 |
 | [`docs/core-files.md`](docs/core-files.md) | 每个核心文件的职责、关键函数、调用关系 |
+| [`docs/cms-direct-crawl.md`](docs/cms-direct-crawl.md) | 苹果CMS 直连抓取：接口、配置、抓取链路、排障 |
 | [`docs/tutorial.md`](docs/tutorial.md) | 从零部署 → 对接 Getapp → 加资源站 → 排障的完整教程 |
 
 ---
 
-## 十一、Docker 化改造分析
+## 十二、Docker 化改造分析
 
-### 11.1 原项目形态与痛点
+### 12.1 原项目形态与痛点
 
 原始 `logvar-getapp` 是**单个 Go 二进制 + systemd 服务**的形态：
 
@@ -349,7 +433,7 @@ logvar-getapp-docker/
 | 无优雅退出 | `stop` 时正在处理的请求被硬杀 |
 | 依赖宿主机的 Go 环境 | 换机器需重新配编译环境 |
 
-### 11.2 改造点对照
+### 12.2 改造点对照
 
 | 维度 | 改造前 | 改造后 |
 |---|---|---|
@@ -367,7 +451,7 @@ logvar-getapp-docker/
 | 首启体验 | 需手工建配置 | 入口脚本自动由 `config.example.json` 生成 |
 | 镜像体积 | — | 多阶段构建 + `-ldflags "-s -w"` + `CGO_ENABLED=0`，运行层仅 alpine + ~10MB 二进制 |
 
-### 11.3 关键设计取舍
+### 12.3 关键设计取舍
 
 1. **为什么不把资源站管理做成数据库/Redis？**
    配置体量极小（几十个域名），用 `config.json` 作为唯一真相源 + 内存快照，既零依赖又能直接备份迁移。
@@ -384,7 +468,7 @@ logvar-getapp-docker/
 5. **为什么 `admin` 默认关闭？**
    管理接口可改上游地址，属敏感能力。默认关闭 + 常量时间比较令牌 + 文档建议内网/反代鉴权，是安全默认值。
 
-### 11.4 遗留风险
+### 12.4 遗留风险
 
 | 风险 | 说明 |
 |---|---|
@@ -392,4 +476,5 @@ logvar-getapp-docker/
 | 配置文件写入冲突 | 若同时有外部程序写 `config.json` 与 `/admin` 写回，可能互相覆盖；建议只用一种方式管理 |
 | 容器重建时未挂载 `data/` | 配置丢失。已在 compose 中默认挂载，请勿删除 |
 | 上游依赖外部可用性 | LogVar 与资源站均为第三方，服务本身无法保证其长期可用 |
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*

@@ -33,5 +33,11 @@
   "admin_enabled": false,
   "admin_token": "change-me-please",
 
-  "watch_interval_sec": 15
+  "watch_interval_sec": 15,
+
+  "cms_base_url": "https://www.501710491.xyz",
+  "cms_concurrency": 4,
+  "cms_timeout_ms": 30000,
+  "cms_all_episodes": true,
+  "cms_max_episodes": 0
 }

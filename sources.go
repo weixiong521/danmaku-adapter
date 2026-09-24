@@ -32,8 +32,9 @@ func (m *SourceManager) Snapshot() map[string]any {
 }
 
 // normalizeHost 规范化资源站主机：无协议补 https://、去尾斜杠、统一小写。
-//   "jimaoys95.com"          -> "https://jimaoys95.com"
-//   "https://Jimaoys95.com/" -> "https://jimaoys95.com"
+//
+//	"jimaoys95.com"          -> "https://jimaoys95.com"
+//	"https://Jimaoys95.com/" -> "https://jimaoys95.com"
 func normalizeHost(h string) string {
 	h = strings.TrimSpace(h)
 	if h == "" {

@@ -79,10 +79,11 @@ func (s *Server) readAdminBody(w http.ResponseWriter, r *http.Request) (*adminBo
 }
 
 // /admin/sources
-//   GET    -> 查看当前资源站
-//   POST   -> 新增（追加）
-//   PUT    -> 整体替换
-//   DELETE -> 删除
+//
+//	GET    -> 查看当前资源站
+//	POST   -> 新增（追加）
+//	PUT    -> 整体替换
+//	DELETE -> 删除
 func (s *Server) adminSources(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:

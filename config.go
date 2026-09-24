@@ -32,6 +32,13 @@ type Config struct {
 	AdminToken    string        // /admin 访问令牌（请求头 X-Admin-Token）
 	WatchInterval time.Duration // 配置文件轮询间隔
 	ConfigPath    string        // config.json 路径
+
+	// 苹果CMS 直连抓取
+	CMSBaseURL     string        // 站点根地址，如 https://www.example.com
+	CMSConcurrency int           // 逐集抓取播放页的并发数
+	CMSTimeout     time.Duration // 详情页/播放页单次请求超时
+	CMSAllEpisodes bool          // 默认是否抓取全部集（false 时每源仅首集）
+	CMSMaxEpisodes int           // 单次请求最多抓取的集数，0 表示不限制
 }
 
 // fileConfig 与 config.json 一一对应。
@@ -51,6 +58,13 @@ type fileConfig struct {
 	AdminEnabled     *bool  `json:"admin_enabled"`
 	AdminToken       string `json:"admin_token"`
 	WatchIntervalSec int    `json:"watch_interval_sec"`
+
+	// 苹果CMS 直连抓取
+	CMSBaseURL     string `json:"cms_base_url"`
+	CMSConcurrency int    `json:"cms_concurrency"`
+	CMSTimeoutMs   int    `json:"cms_timeout_ms"`
+	CMSAllEpisodes *bool  `json:"cms_all_episodes"`
+	CMSMaxEpisodes int    `json:"cms_max_episodes"`
 }
 
 func env(key string) string { return strings.TrimSpace(os.Getenv(key)) }
@@ -91,6 +105,12 @@ func defaultConfig() *Config {
 		AdminEnabled:   false,
 		AdminToken:     "",
 		WatchInterval:  15 * time.Second,
+
+		CMSBaseURL:     "",
+		CMSConcurrency: 4,
+		CMSTimeout:     30 * time.Second,
+		CMSAllEpisodes: true,
+		CMSMaxEpisodes: 0,
 	}
 }
 
@@ -156,6 +176,21 @@ func loadConfigFrom(path string) *Config {
 				if fc.WatchIntervalSec > 0 {
 					cfg.WatchInterval = time.Duration(fc.WatchIntervalSec) * time.Second
 				}
+				if fc.CMSBaseURL != "" {
+					cfg.CMSBaseURL = fc.CMSBaseURL
+				}
+				if fc.CMSConcurrency > 0 {
+					cfg.CMSConcurrency = fc.CMSConcurrency
+				}
+				if fc.CMSTimeoutMs > 0 {
+					cfg.CMSTimeout = time.Duration(fc.CMSTimeoutMs) * time.Millisecond
+				}
+				if fc.CMSAllEpisodes != nil {
+					cfg.CMSAllEpisodes = *fc.CMSAllEpisodes
+				}
+				if fc.CMSMaxEpisodes > 0 {
+					cfg.CMSMaxEpisodes = fc.CMSMaxEpisodes
+				}
 			}
 		}
 	}
@@ -220,9 +255,39 @@ func loadConfigFrom(path string) *Config {
 		cfg.ConfigPath = v
 	}
 
+	// ---- 苹果CMS 直连抓取 ----
+	if v := env("CMS_BASE_URL"); v != "" {
+		cfg.CMSBaseURL = v
+	}
+	if v := env("CMS_CONCURRENCY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.CMSConcurrency = n
+		}
+	}
+	if v := env("CMS_TIMEOUT_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.CMSTimeout = time.Duration(n) * time.Millisecond
+		}
+	}
+	if v := env("CMS_ALL_EPISODES"); v != "" {
+		cfg.CMSAllEpisodes = parseBool(v)
+	}
+	if v := env("CMS_MAX_EPISODES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.CMSMaxEpisodes = n
+		}
+	}
+
 	cfg.LogVarBase = strings.TrimRight(cfg.LogVarBase, "/")
 	cfg.ResourceHosts = normalizeHosts(cfg.ResourceHosts)
 	cfg.SourcePriority = splitCSV(strings.Join(cfg.SourcePriority, ","))
+	cfg.CMSBaseURL = normalizeCMSBase(cfg.CMSBaseURL)
+	if cfg.CMSConcurrency <= 0 {
+		cfg.CMSConcurrency = 1
+	}
+	if cfg.CMSTimeout <= 0 {
+		cfg.CMSTimeout = 30 * time.Second
+	}
 	return cfg
 }
 
@@ -340,6 +405,7 @@ func fileModTime(path string) time.Time {
 
 func toFileConfig(c *Config) fileConfig {
 	admin := c.AdminEnabled
+	allEp := c.CMSAllEpisodes
 	return fileConfig{
 		Listen:           c.Listen,
 		LogVarBase:       c.LogVarBase,
@@ -354,6 +420,12 @@ func toFileConfig(c *Config) fileConfig {
 		AdminEnabled:     &admin,
 		AdminToken:       c.AdminToken,
 		WatchIntervalSec: int(c.WatchInterval / time.Second),
+
+		CMSBaseURL:     c.CMSBaseURL,
+		CMSConcurrency: c.CMSConcurrency,
+		CMSTimeoutMs:   int(c.CMSTimeout / time.Millisecond),
+		CMSAllEpisodes: &allEp,
+		CMSMaxEpisodes: c.CMSMaxEpisodes,
 	}
 }
 

@@ -8,10 +8,10 @@ import (
 
 func TestParseAnimeTitle(t *testing.T) {
 	cases := []struct {
-		raw          string
-		wantBase     string
-		wantSeason   int
-		wantYear     int
+		raw        string
+		wantBase   string
+		wantSeason int
+		wantYear   int
 	}{
 		{"庆余年 第一季(2019)【国产剧】from tencent", "庆余年", 1, 2019},
 		{"庆余年 第二季(2024)【国产剧】from tencent", "庆余年", 2, 2024},

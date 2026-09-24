@@ -38,6 +38,7 @@ type Server struct {
 	lv    *LogVarClient
 	jl    *JuliangResolver
 	sm    *SourceManager
+	cms   *CMSCrawler
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, v any) {
@@ -60,6 +61,13 @@ func (s *Server) handleDanmu(w http.ResponseWriter, r *http.Request) {
 	cfg := s.store.Get()
 
 	q := r.URL.Query()
+
+	// 苹果CMS 直连抓取：?ac=cms&id={视频ID} 或 ?ac=cms&url={详情页URL}（亦可直接访问 /cms?id=..）
+	if r.URL.Path == "/cms" || strings.EqualFold(strings.TrimSpace(q.Get("ac")), "cms") {
+		s.handleCMS(w, r, cfg)
+		return
+	}
+
 	inURL := q.Get("url")
 	doubanID := strings.TrimSpace(q.Get("douban_id"))
 	extraEp := parseLeadingInt(firstNonEmpty(q.Get("ep"), q.Get("episode"))) // 非 Getapp 默认字段，仅做兜底
